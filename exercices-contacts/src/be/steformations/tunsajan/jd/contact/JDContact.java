@@ -12,7 +12,8 @@ import be.steformations.java_data.contacts.interfaces.jdbc.ContactJdbcManager;
 
 public class JDContact implements ContactJdbcManager{
 	
-	private String url ="jdbc:postgresql://prim2014-14.fapse.priv:5432/contact";
+	//private String url ="jdbc:postgresql://prim2014-14.fapse.priv:5432/contact";
+	private String url ="jdbc:postgresql://localhost:5432/contact";
 	private String user = "postgres";
 	private String pwd = "postgres";
 	private Connection con;
@@ -36,7 +37,6 @@ public class JDContact implements ContactJdbcManager{
 			req.setString(2, name);
 			ResultSet r = req.executeQuery();
 			if(r.next()) rsql = r.getString(1);
-			System.out.println(sql);
 			close();
 			return rsql;
 		} catch (SQLException e) {
@@ -74,7 +74,6 @@ public class JDContact implements ContactJdbcManager{
 				rsql = r.getString(1);
 				rlist.add(rsql);
 			}
-			System.out.println(sql);
 			close();
 			//if(rlist.isEmpty()) return null;
 			return rlist;
@@ -114,7 +113,6 @@ public class JDContact implements ContactJdbcManager{
 				rsql = r.getString(1);
 				rlist.add(rsql);
 			}
-			System.out.println(sql);
 			close();
 			//if(rlist.isEmpty()) return null;
 			return rlist;
@@ -137,10 +135,11 @@ public class JDContact implements ContactJdbcManager{
 	public int createAndSaveContact(String firstname, String name, String email, String countryAbbreviation,
 			String[] tagsValues) {
 		
-		if(firstname == null || name == null || email == null
-				|| this.getEmailByContact(firstname, name) != null ) return 0;
+		if(firstname == null || name == null || email == null || email.length() <5 
+				|| this.getEmailByContact(firstname, name) != null  ) return 0;
+		int idPays = 0;
+		if(countryAbbreviation!= null) idPays = this.rechercheIDPays((countryAbbreviation));
 		
-		int idPays = this.rechercheIDPays((countryAbbreviation));
 	
 		PreparedStatement req =null;
 		String sql = 
@@ -153,17 +152,26 @@ public class JDContact implements ContactJdbcManager{
 				req.setString(1, firstname);
 				req.setString(2, name);
 				req.setString(3, email);
-				if(idPays != -1) req.setInt(4, idPays);
+				if(this.isPresentIDPays(idPays))req.setInt(4, idPays);
 				else req.setNull(4, java.sql.Types.INTEGER);
 				req.executeUpdate();
-				System.out.println(sql);
+				int idNewContact  = this.lastIDContact();
+				
 				if(tagsValues != null){
-				for(String t: tagsValues){
-					if(!this.rechercheTag(t)) this.updateTag(t);
+					for(String t: tagsValues){
+						int idTag =this.rechercheTag(t);
+						if(idTag == -1){
+							this.updateTag(t);
+							this.contactsTags(this.lastIDTag(), idNewContact);
+						}
+						else this.contactsTags(idTag, idNewContact);
+						
+					}
 				}
-				}
+				
+				
 				c.close();
-			return this.lastIDContact();
+			return idNewContact;
 		} catch (SQLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -200,25 +208,26 @@ public class JDContact implements ContactJdbcManager{
 			e.printStackTrace();
 		}
 	}
-	private boolean rechercheTag(String tag){
+	private int rechercheTag(String tag){
 		this.open();
 		PreparedStatement req =null;
 		String sql = 
-					"SELECT tags.tag "
+					"SELECT tags.id "
 				+ 	"FROM tags "
 				+ 	"WHERE tags.tag = ? ";
 		try {
 			req = con.prepareStatement(sql);
 			req.setString(1, tag);
 			ResultSet r = req.executeQuery();
-			System.out.println(sql);
 			close();
-			return r.next();
+			if(r.next())
+			return r.getInt(1);
+			else return -1;
 		} catch (SQLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		return false;
+		return -1;
 	}
 	private int rechercheIDPays(String abb){
 		 this.open();
@@ -231,17 +240,36 @@ public class JDContact implements ContactJdbcManager{
 			req = con.prepareStatement(sql);
 			req.setString(1, abb);
 			ResultSet r = req.executeQuery();
-			System.out.println(sql);
 			close();
 			if(r.next()) return r.getInt(1);
-			return -1;
+			else return 0;
 		} catch (SQLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		return -1;
+		return 0;
+	}
+	private boolean isPresentIDPays(int id){
+		 this.open();
+		PreparedStatement req =null;
+		String sql = 
+					"SELECT pays.nom "
+				+ 	"FROM pays "
+				+ 	"WHERE pays.id = ? ";
+		try {
+			req = con.prepareStatement(sql);
+			req.setInt(1, id);
+			ResultSet r = req.executeQuery();
+			close();
+			return r.next();
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return true;
 	}
 	public void updateTag(String tag){
+		if(tag == null ) return;
 	
 		this.open();
 		PreparedStatement req =null;
@@ -249,11 +277,50 @@ public class JDContact implements ContactJdbcManager{
 				"insert into tags(tag) "
 				         + " values(?)";
 		try {
-				String rsql= null;
 				req = con.prepareStatement(sql);
 				req.setString(1, tag);
-				int r = req.executeUpdate();
-				System.out.println(sql);
+				req.executeUpdate();
+				System.out.println("updatetag   " + tag);
+				close();
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+	}
+	public int lastIDTag(){
+		
+		this.open();
+		PreparedStatement req =null;
+		String sql = 	" SELECT tags.id "
+				+ 		"	FROM tags "
+				+		"ORDER BY tags.id DESC "
+				+ 		"LIMIT 1";
+		
+		try {
+			req = con.prepareStatement(sql);
+			ResultSet r = req.executeQuery();
+			this.close();
+			if(r.next()) return r.getInt(1);
+			else return -1;
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return -1;
+	}
+	public void contactsTags(int idTag,  int contact){
+	
+	
+		this.open();
+		PreparedStatement req =null;
+		String sql = 
+				"insert into contacts_tags(contact, tag) "
+				         + " values(?, ?)";
+		try {
+				req = con.prepareStatement(sql);
+				req.setInt(1, contact);
+				req.setInt(2, idTag);
+				req.executeUpdate();
+				System.out.println("update contacts_tags   ");
 				close();
 		} catch (SQLException e) {
 			e.printStackTrace();
@@ -279,6 +346,28 @@ public class JDContact implements ContactJdbcManager{
 		}
 		return 0;
 		
+	}
+	public boolean checkNomPrenom(String nom, String prenom){
+		this.open();
+		PreparedStatement req =null;
+		String sql = 
+					"SELECT contacts.id "
+				+ 	"FROM contacts "
+				+ 	"WHERE contacts.nom = ? "
+				+ "AND contacts.prenom = ?";
+		try {
+			req = con.prepareStatement(sql);
+			req.setString(1, nom);
+			req.setString(2, prenom);
+			ResultSet r = req.executeQuery();
+			close();
+			if(r.next()) return true;
+			return false;
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return false;
 	}
 		
 

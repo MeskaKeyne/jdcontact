@@ -22,7 +22,6 @@ public class _04_TestCreateAndSaveContact {
 			fail(e.getMessage());
 		}
 	}
-	
 	@Test
 	public void testInsererContactSansPaysNiTag() {
 		long millis = System.currentTimeMillis();
